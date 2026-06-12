@@ -123,6 +123,35 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
         final scheduledTimes = [
           '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}',
         ];
+
+        // Duplicate guard — warn the user if this medicine name already exists
+        final alreadyExists = await medService.medicationExists(
+          userId: userId,
+          name: _nameController.text,
+        );
+        if (alreadyExists && mounted) {
+          final proceed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Already Added'),
+              content: Text(
+                '"${_nameController.text}" is already in your medicine list.\n\nAdd it again anyway?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Add Anyway'),
+                ),
+              ],
+            ),
+          );
+          if (proceed != true) return;
+        }
+
         final medId = await medService.addMedication(
           userId: userId,
           name: _nameController.text,

@@ -87,7 +87,7 @@ class MedicationRepository {
     DateTime? endDate,
     int? gapInDays,
   }) async {
-    final sanitizedName = InputValidators.sanitizeText(name, maxLength: 50);
+    final sanitizedName = InputValidators.sanitizeText(name, maxLength: 100); // increased from 50 — pharma names can be long
     final sanitizedComp = InputValidators.sanitizeText(composition, maxLength: 100);
     final sanitizedRationale = InputValidators.sanitizeText(rationale, maxLength: 150);
 
@@ -103,6 +103,20 @@ class MedicationRepository {
       'createdAt': FieldValue.serverTimestamp(),
     });
     return docRef.id;
+  }
+
+  /// Returns true if a medication with the same name already exists for this user.
+  /// Used by the UI to show a duplicate-warning dialog before saving.
+  Future<bool> medicationExists({required String userId, required String name}) async {
+    final sanitizedName = InputValidators.sanitizeText(name, maxLength: 100);
+    final snapshot = await _db
+        .collection('users')
+        .doc(userId)
+        .collection('medications')
+        .where('name', isEqualTo: sanitizedName)
+        .limit(1)
+        .get();
+    return snapshot.docs.isNotEmpty;
   }
 
   Future<DoseLogModel?> getDoseLog(String userId, String logId) async {

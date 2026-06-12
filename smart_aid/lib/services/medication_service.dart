@@ -1,8 +1,11 @@
 // lib/services/medication_service.dart
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/medication_model.dart';
 import '../models/dose_log_model.dart';
 import '../repositories/medication_repository.dart';
+import '../services/local_db_service.dart';
 
 class MedicationService {
   final MedicationRepository medicationRepository;
@@ -34,9 +37,9 @@ class MedicationService {
     required String userId,
     required String name,
     required String composition,
-    required String rationale, // "Prescribed to control blood pressure"
+    required String rationale,
     required int dailyDoseLimit,
-    required List<String> scheduledTimes, // ["08:00", "20:00"]
+    required List<String> scheduledTimes,
     DateTime? startDate,
     DateTime? endDate,
     int? gapInDays,
@@ -54,7 +57,15 @@ class MedicationService {
     );
   }
 
-  // Log an intake and check for over/underdose
+  /// Check whether a medication with this name already exists for the user.
+  /// Exposed so AddMedicineScreen can show a duplicate-warning dialog.
+  Future<bool> medicationExists({required String userId, required String name}) {
+    return medicationRepository.medicationExists(userId: userId, name: name);
+  }
+
+  // Log an intake and check for over/underdose.
+  // Fix 3A: reads from local SQLite FIRST to avoid a live Firestore round-trip
+  // when the device is offline or Firestore is momentarily slow.
   Future<DoseCheckResult> logIntake({
     required String userId,
     required String medicationId,
@@ -64,10 +75,30 @@ class MedicationService {
     final today = todayKey();
     final logId = '$medicationId-$today';
 
-    final existingLog = await medicationRepository.getDoseLog(userId, logId);
-    int currentCount = existingLog?.count ?? 0;
+    // 1. Read local SQLite rows for this med + today (fast, always available offline)
+    int currentCount = 0;
+    try {
+      final localLogs = await LocalDbService().getLogs(userId);
+      final todayLocal = localLogs.where(
+        (l) => l['medicationId'] == medicationId && l['dateKey'] == today,
+      ).toList();
+      currentCount = todayLocal.length; // each row = one intake event
+    } catch (e) {
+      debugPrint('[MedicationService] local read failed: $e');
+    }
 
-    // Check overdose rule
+    // 2. Only hit Firestore if local count is 0 (first intake of the day or fresh install)
+    if (currentCount == 0) {
+      try {
+        final existingLog = await medicationRepository.getDoseLog(userId, logId);
+        currentCount = existingLog?.count ?? 0;
+      } on FirebaseException catch (e) {
+        // Firestore unavailable — proceed with local count; offline write will sync later
+        debugPrint('[MedicationService] getDoseLog Firestore error (${e.code}), using local count=$currentCount');
+      }
+    }
+
+    // 3. Overdose guard
     if (currentCount >= dailyDoseLimit) {
       return DoseCheckResult.overdose(currentCount, dailyDoseLimit);
     }
@@ -84,7 +115,6 @@ class MedicationService {
 
     return DoseCheckResult.ok(currentCount + 1, dailyDoseLimit);
   }
-
 
   String todayKey() {
     final now = DateTime.now();

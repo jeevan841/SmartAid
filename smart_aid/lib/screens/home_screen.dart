@@ -533,7 +533,7 @@ class _MedicineCardWidgetState extends State<_MedicineCardWidget> {
             content: Text(e.code == 'permission-denied'
                 ? 'Permission denied to log dose.'
                 : isTransient
-                    ? 'Network issue — dose saved locally, will sync when back online.'
+                    ? 'Saved locally \u2014 will sync to cloud automatically.'
                     : 'Error: ${e.message ?? ''}'),
           ),
         );
