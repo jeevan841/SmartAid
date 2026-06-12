@@ -7,6 +7,12 @@
   packages = [
     pkgs.jdk21
     pkgs.unzip
+    pkgs.clang
+    pkgs.cmake
+    pkgs.ninja
+    pkgs.pkg-config
+    pkgs.google-chrome
+    pkgs.nodejs_20
   ];
   # Sets environment variables in the workspace
   env = {};
@@ -37,3 +43,4 @@
     };
   };
 }
+# Trigger rebuild

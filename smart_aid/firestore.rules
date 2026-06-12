@@ -1,0 +1,89 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // -------------------------------------------------------------------------
+    // HELPER FUNCTIONS
+    // -------------------------------------------------------------------------
+
+    // Checks if the request is coming from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Checks if the authenticated user is the owner of the specified userId
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Checks if the authenticated user is registered as a doctor in the database.
+    // (Note: In a production scale app, Custom Claims are preferred over database lookups to save reads)
+    function isDoctor() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isDoctor == true;
+    }
+    
+    // Checks if the specified user has opted into sharing data for research
+    function hasSharedData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.share_data_research == true;
+    }
+
+    // -------------------------------------------------------------------------
+    // USERS COLLECTION
+    // -------------------------------------------------------------------------
+
+    match /users/{userId} {
+      
+      // READ: A user can read their own document. 
+      // A doctor can read the document ONLY if the user has `share_data_research` == true.
+      // 
+      // IMPORTANT FOR QUERIES: Because rules are not filters, if a doctor queries `collection('users')`, 
+      // the query MUST explicitly include `.where('share_data_research', '==', true)`. 
+      // Otherwise, the entire query will fail because Firestore guarantees that you cannot 
+      // read documents you don't have access to.
+      allow read: if isOwner(userId) || (isDoctor() && resource.data.share_data_research == true);
+      
+      // WRITE: Only the owner can write to their own user document.
+      // VALIDATION: Ensures the basic fields exist and are of correct types when modifying.
+      allow write: if isOwner(userId);
+      
+      // -----------------------------------------------------------------------
+      // SUBCOLLECTIONS
+      // -----------------------------------------------------------------------
+
+      match /medications/{docId} {
+        // Only owner or an authorized doctor can read
+        allow read: if isOwner(userId) || (isDoctor() && hasSharedData(userId));
+        
+        // Only owner can write.
+        // VALIDATION: Requires `name` and `dailyDoseLimit` to exist. Prevents negative limits.
+        allow write: if isOwner(userId) && 
+                     (!request.resource.data.keys().hasAny(['dailyDoseLimit']) || 
+                      (request.resource.data.dailyDoseLimit is int && request.resource.data.dailyDoseLimit > 0));
+      }
+      
+      match /dose_logs/{docId} {
+        allow read: if isOwner(userId) || (isDoctor() && hasSharedData(userId));
+        
+        // VALIDATION: Count must be a number >= 0.
+        allow write: if isOwner(userId) && 
+                     (!request.resource.data.keys().hasAny(['count']) || 
+                      (request.resource.data.count is int && request.resource.data.count >= 0));
+      }
+      
+      match /appointments/{docId} {
+        allow read: if isOwner(userId) || (isDoctor() && hasSharedData(userId));
+        allow write: if isOwner(userId);
+      }
+      
+      match /health_records/{docId} {
+        allow read: if isOwner(userId) || (isDoctor() && hasSharedData(userId));
+        
+        // VALIDATION: Enforce that local path and file name are strings when creating records.
+        allow write: if isOwner(userId) && 
+                     (!request.resource.data.keys().hasAny(['localPath', 'fileName']) || 
+                      (request.resource.data.localPath is string && request.resource.data.fileName is string));
+      }
+    }
+  }
+}

@@ -1,0 +1,2 @@
+-dontwarn com.google.mlkit.**
+-dontwarn com.google_mlkit_text_recognition.**

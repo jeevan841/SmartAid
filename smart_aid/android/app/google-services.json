@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "47612874306",
+    "project_id": "smart-aid-9a018",
+    "storage_bucket": "smart-aid-9a018.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:47612874306:android:5bb63fc786b367b00427db",
+        "android_client_info": {
+          "package_name": "com.example.smart_aid"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_NXQ-WWpmnb1kRgaPJOKcZuATpipm0mw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
