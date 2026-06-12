@@ -19,6 +19,7 @@ import 'package:smart_aid/analytics/intelligence/services/product_insights_servi
 import 'package:smart_aid/reports/services/report_generation_service.dart';
 import 'package:smart_aid/ai/services/ai_insight_service.dart';
 import 'package:smart_aid/offline/services/offline_sync_service.dart';
+import 'package:smart_aid/services/notification_service.dart';
 
 import 'package:smart_aid/repositories/user_repository.dart';
 import 'package:smart_aid/repositories/medication_repository.dart';
@@ -32,6 +33,9 @@ import 'dart:async';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Initialize notifications (permissions + timezone)
+  await NotificationService.instance.initialize();
 
   runApp(
     MultiProvider(

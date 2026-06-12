@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/medication_service.dart';
 import '../services/pill_verification_service.dart';
+import '../services/notification_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
@@ -118,17 +119,30 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
     if (_formKey.currentState!.validate()) {
       try {
         final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
-        await context.read<MedicationService>().addMedication(
+        final medService = context.read<MedicationService>();
+        final scheduledTimes = [
+          '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}',
+        ];
+        final medId = await medService.addMedication(
           userId: userId,
           name: _nameController.text,
           composition: 'Standard',
           rationale: _rationaleController.text,
           dailyDoseLimit: int.parse(_dosageController.text),
-          scheduledTimes: ['${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}'],
+          scheduledTimes: scheduledTimes,
           startDate: _startDate,
           endDate: _endDate,
           gapInDays: _gapInDaysController.text.isNotEmpty ? int.tryParse(_gapInDaysController.text) : null,
         );
+
+        // Schedule daily alarm for the new medication
+        if (medId != null) {
+          await NotificationService.instance.scheduleMedicationReminders(
+            medicationId: medId,
+            medicationName: _nameController.text,
+            scheduledTimes: scheduledTimes,
+          );
+        }
 
         if (mounted) {
           Navigator.pop(context);

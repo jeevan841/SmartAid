@@ -11,6 +11,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+Smart Aid 2.0.8.apk
 
 # IntelliJ related
 *.iml

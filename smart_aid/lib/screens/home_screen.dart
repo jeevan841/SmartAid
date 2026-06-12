@@ -469,6 +469,9 @@ class _MedicineCardWidget extends StatefulWidget {
 class _MedicineCardWidgetState extends State<_MedicineCardWidget> {
   Stream<DoseLogModel?>? _doseLogStream;
 
+  bool _isDisappearing = false;
+  bool _isVisible = true;
+
   @override
   void initState() {
     super.initState();
@@ -480,10 +483,61 @@ class _MedicineCardWidgetState extends State<_MedicineCardWidget> {
     );
   }
 
+  Future<void> _handleTap(bool isTaken) async {
+    if (isTaken) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Already logged today')),
+        );
+      }
+      return;
+    }
+    try {
+      await context.read<MedicationService>().logIntake(
+        userId: widget.userId,
+        medicationId: widget.medication.id,
+        medicationName: widget.medication.name,
+        dailyDoseLimit: widget.medication.dailyDoseLimit,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.green.shade700,
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('${widget.medication.name} logged!'),
+            ],
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      // Hold the strikethrough visible, then collapse
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (!mounted) return;
+      setState(() => _isDisappearing = true);
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (mounted) setState(() => _isVisible = false);
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.code == 'permission-denied'
+                ? 'Permission denied to log dose.'
+                : 'Error: ${e.message ?? ''}'),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    String time = widget.medication.scheduledTimes.isNotEmpty 
-        ? widget.medication.scheduledTimes.first 
+    if (!_isVisible) return const SizedBox.shrink();
+
+    final String time = widget.medication.scheduledTimes.isNotEmpty
+        ? widget.medication.scheduledTimes.first
         : '00:00';
 
     return StreamBuilder<DoseLogModel?>(
@@ -498,113 +552,131 @@ class _MedicineCardWidgetState extends State<_MedicineCardWidget> {
           taken = logSnapshot.data!.count;
         }
 
-        bool isTaken = taken >= widget.medication.dailyDoseLimit;
+        final bool isTaken =
+            taken >= widget.medication.dailyDoseLimit || _isDisappearing;
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        
-        return GestureDetector(
-          onTap: () async {
-            if (!isTaken) {
-              try {
-                await context.read<MedicationService>().logIntake(
-                  userId: widget.userId,
-                  medicationId: widget.medication.id,
-                  medicationName: widget.medication.name,
-                  dailyDoseLimit: widget.medication.dailyDoseLimit,
-                );
-                if (context.mounted) {
-                  setState(() {}); // Re-trigger the future builder for adherence card
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Logged to your records')),
-                  );
-                }
-              } on FirebaseException catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.code == 'permission-denied' ? 'Permission denied to log dose.' : 'Error: ${e.message}')),
-                  );
-                }
-              }
-            } else {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Already logged')),
-                );
-              }
-            }
-          },
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isTaken 
-                  ? (isDark ? Colors.green.withValues(alpha: 0.1) : Colors.green.shade50) 
-                  : Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: isDark ? null : [
-                BoxShadow(
-                  color: Colors.grey.withValues(alpha: 0.2),
-                  spreadRadius: 2,
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-              border: Border.all(
-                color: isTaken 
-                    ? (isDark ? Colors.green.withValues(alpha: 0.3) : Colors.green.shade200) 
-                    : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.medication, color: Theme.of(context).colorScheme.primary, size: 40),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.medication.name,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          decoration: isTaken ? TextDecoration.lineThrough : null,
-                          decorationThickness: 2.0,
-                          color: isTaken ? (isDark ? Colors.grey.shade600 : Colors.grey) : (isDark ? Colors.white : Colors.black87),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${widget.medication.dailyDoseLimit} Pill(s) Daily - Taken $taken',
-                        style: TextStyle(
-                          fontSize: 15, 
-                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                          decoration: isTaken ? TextDecoration.lineThrough : null,
-                        ),
-                      ),
-                    ],
+
+        return AnimatedOpacity(
+          opacity: _isDisappearing ? 0.0 : 1.0,
+          duration: const Duration(milliseconds: 350),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOut,
+            height: _isDisappearing ? 0.0 : null,
+            clipBehavior: Clip.hardEdge,
+            decoration: const BoxDecoration(),
+            child: GestureDetector(
+              onTap: () => _handleTap(isTaken),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isTaken
+                      ? (isDark
+                          ? Colors.green.withValues(alpha: 0.1)
+                          : Colors.green.shade50)
+                      : Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: isDark
+                      ? null
+                      : [
+                          BoxShadow(
+                            color: Colors.grey.withValues(alpha: 0.2),
+                            spreadRadius: 2,
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                  border: Border.all(
+                    color: isTaken
+                        ? (isDark
+                            ? Colors.green.withValues(alpha: 0.3)
+                            : Colors.green.shade200)
+                        : (isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade200),
+                    width: 1,
                   ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                child: Row(
                   children: [
-                    Text(
-                      time,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: isTaken ? Colors.grey : Theme.of(context).colorScheme.primary,
-                        decoration: isTaken ? TextDecoration.lineThrough : null,
+                    Icon(
+                      Icons.medication,
+                      color: isTaken
+                          ? Colors.green
+                          : Theme.of(context).colorScheme.primary,
+                      size: 40,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.medication.name,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              decoration: isTaken
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              decorationThickness: 2.5,
+                              color: isTaken
+                                  ? (isDark
+                                      ? Colors.grey.shade600
+                                      : Colors.grey)
+                                  : (isDark ? Colors.white : Colors.black87),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${widget.medication.dailyDoseLimit} Pill(s) Daily — Taken $taken',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade600,
+                              decoration: isTaken
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Icon(
-                      isTaken ? Icons.check_circle : Icons.radio_button_unchecked,
-                      color: isTaken ? (isDark ? Colors.greenAccent : Colors.green) : Colors.grey,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          time,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: isTaken
+                                ? Colors.grey
+                                : Theme.of(context).colorScheme.primary,
+                            decoration:
+                                isTaken ? TextDecoration.lineThrough : null,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: Icon(
+                            isTaken
+                                ? Icons.check_circle
+                                : Icons.radio_button_unchecked,
+                            key: ValueKey(isTaken),
+                            color: isTaken
+                                ? (isDark ? Colors.greenAccent : Colors.green)
+                                : Colors.grey,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         );

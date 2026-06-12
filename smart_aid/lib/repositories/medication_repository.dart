@@ -75,7 +75,7 @@ class MedicationRepository {
   // OPERATIONS
   // ---------------------------------------------------------------------------
 
-  Future<void> addMedication({
+  Future<String> addMedication({
     required String userId,
     required String name,
     required String composition,
@@ -90,7 +90,7 @@ class MedicationRepository {
     final sanitizedComp = InputValidators.sanitizeText(composition, maxLength: 100);
     final sanitizedRationale = InputValidators.sanitizeText(rationale, maxLength: 150);
 
-    await _db.collection('users').doc(userId).collection('medications').add({
+    final docRef = await _db.collection('users').doc(userId).collection('medications').add({
       'name': sanitizedName,
       'composition': sanitizedComp,
       'rationale': sanitizedRationale,
@@ -101,6 +101,7 @@ class MedicationRepository {
       if (gapInDays != null) 'gapInDays': gapInDays,
       'createdAt': FieldValue.serverTimestamp(),
     });
+    return docRef.id;
   }
 
   Future<DoseLogModel?> getDoseLog(String userId, String logId) async {

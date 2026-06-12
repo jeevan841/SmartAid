@@ -29,8 +29,8 @@ class MedicationService {
   // OPERATIONS
   // ---------------------------------------------------------------------------
 
-  // Add a new medication schedule
-  Future<void> addMedication({
+  // Add a new medication schedule — returns the new Firestore document ID.
+  Future<String?> addMedication({
     required String userId,
     required String name,
     required String composition,
@@ -41,7 +41,7 @@ class MedicationService {
     DateTime? endDate,
     int? gapInDays,
   }) async {
-    await medicationRepository.addMedication(
+    return medicationRepository.addMedication(
       userId: userId,
       name: name,
       composition: composition,
