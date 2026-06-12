@@ -471,6 +471,7 @@ class _MedicineCardWidgetState extends State<_MedicineCardWidget> {
 
   bool _isDisappearing = false;
   bool _isVisible = true;
+  bool _isTakenLocally = false; // optimistic: strike immediately on tap
 
   @override
   void initState() {
@@ -492,6 +493,8 @@ class _MedicineCardWidgetState extends State<_MedicineCardWidget> {
       }
       return;
     }
+    // Immediately apply strikethrough (optimistic UI)
+    setState(() => _isTakenLocally = true);
     try {
       await context.read<MedicationService>().logIntake(
         userId: widget.userId,
@@ -520,12 +523,18 @@ class _MedicineCardWidgetState extends State<_MedicineCardWidget> {
       await Future.delayed(const Duration(milliseconds: 400));
       if (mounted) setState(() => _isVisible = false);
     } on FirebaseException catch (e) {
+      // Revert optimistic update on failure
+      if (mounted) setState(() => _isTakenLocally = false);
+      final isTransient = e.code == 'unavailable' || e.code == 'deadline-exceeded';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
+            backgroundColor: isTransient ? Colors.orange.shade700 : null,
             content: Text(e.code == 'permission-denied'
                 ? 'Permission denied to log dose.'
-                : 'Error: ${e.message ?? ''}'),
+                : isTransient
+                    ? 'Network issue — dose saved locally, will sync when back online.'
+                    : 'Error: ${e.message ?? ''}'),
           ),
         );
       }
@@ -552,8 +561,10 @@ class _MedicineCardWidgetState extends State<_MedicineCardWidget> {
           taken = logSnapshot.data!.count;
         }
 
-        final bool isTaken =
-            taken >= widget.medication.dailyDoseLimit || _isDisappearing;
+        // isTaken is true if: stream says so, OR local optimistic flag, OR disappearing
+        final bool isTaken = taken >= widget.medication.dailyDoseLimit
+            || _isTakenLocally
+            || _isDisappearing;
         final isDark = Theme.of(context).brightness == Brightness.dark;
 
         return AnimatedOpacity(

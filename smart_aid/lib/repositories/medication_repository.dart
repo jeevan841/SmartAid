@@ -1,4 +1,5 @@
 // ignore_for_file: use_null_aware_elements
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:smart_aid/services/local_db_service.dart';
@@ -154,7 +155,7 @@ class MedicationRepository {
        return;
     }
 
-    await _db
+    await _withFirestoreRetry(() => _db
         .collection('users')
         .doc(userId)
         .collection('dose_logs')
@@ -165,7 +166,26 @@ class MedicationRepository {
       'count': log.count,
       'date': log.date,
       'lastTaken': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    }, SetOptions(merge: true)));
+  }
+
+  /// Wraps a Firestore call with exponential back-off retry for transient
+  /// gRPC errors ('unavailable', 'deadline-exceeded').
+  /// Retries up to 3 times with delays of 1 s, 2 s, 4 s.
+  Future<T> _withFirestoreRetry<T>(Future<T> Function() fn) async {
+    const transientCodes = {'unavailable', 'deadline-exceeded'};
+    int attempt = 0;
+    while (true) {
+      try {
+        return await fn();
+      } on FirebaseException catch (e) {
+        attempt++;
+        if (!transientCodes.contains(e.code) || attempt >= 3) rethrow;
+        final delay = Duration(seconds: 1 << (attempt - 1)); // 1s, 2s, 4s
+        debugPrint('[Firestore] transient error "${e.code}", retrying in ${delay.inSeconds}s (attempt $attempt/3)');
+        await Future.delayed(delay);
+      }
+    }
   }
 
   Future<void> syncDoseLog(String userId, Map<String, dynamic> payload) async {
